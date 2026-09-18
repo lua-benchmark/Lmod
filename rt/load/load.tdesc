@@ -1,0 +1,189 @@
+-- -*- lua -*-
+
+testdescript = {
+   owner   = "rtm",
+   product = "modules",
+   description = [[
+	 Test initial module load
+   ]],
+   keywords = {"load" },
+
+   active = 1,
+   testName = "load",
+   job_submit_method = "INTERACTIVE",
+
+   runScript = [[
+
+     . $(projectDir)/rt/common_funcs.sh
+
+     SED=sed
+     osType=`uname -s`
+     if [ ${osType:-} = "Darwin" ]; then
+       SED=gsed
+     fi
+
+     unsetMT
+     initStdEnvVars
+     MODULEPATH_ROOT=$(testDir)/mf;  export MODULEPATH_ROOT
+
+     remove_generated_lmod_files mf
+
+     cp $(projectDir)/init/lmodrc.lua .lmodrc.lua
+     mkdir -p mf/bad_symlink
+     ln -s 1.0.lua mf/bad_symlink/2.0.lua
+
+     runLmod --version                                      #  1
+     runLmod use -a $testDir/mf/Core $testDir/mf/Beta       #  2
+     runLmod use $testDir/mf/notDir  $outputDir/mf          #  3
+     runLmod load admin PrgEnv                              #  4
+     runLmod load gotoblas/1.30-beta                        #  5
+     runLmod rm   gotoblas/1.30-beta                        #  6
+     runLmod try-add gotoblas123 intel                      #  7
+     runLmod load gotoblas                                  #  8
+     runLmod load multi                                     #  9
+     runLmod unload multi                                   # 10
+     runLmod load boost                                     # 11
+     runLmod use -a $testDir/mf/Core2                       # 12
+     runLmod load _a                                        # 13
+     runLmod load __b                                       # 14
+     runLmod last-error                                     # 15
+     runLmod avail                                          # 16
+     runLmod -d avail                                       # 17
+     runLmod unload boost                                   # 18
+     runLmod load boost/1.33.0                              # 19
+     runLmod load boost/1.57.0                              # 10
+     runLmod load boost                                     # 21
+     runLmod load alex                                      # 22
+     runLmod load D                                         # 23
+     runLmod --latest load rtm_intel                        # 24
+     runLmod list                                           # 25
+     runLmod use    $testDir/mf/Share                       # 26
+     runLmod use -a $testDir/mf/Scratch                     # 27
+     runLmod -r avail A B                                   # 28
+     runLmod load  A B                                      # 29
+     runLmod list                                           # 20
+     runLmod load  DoesNotExist                             # 31
+     runLmod list                                           # 32
+     runLmod tablelist                                      # 33
+     runLmod avail                                          # 34
+     runLmod avail C                                        # 35
+     runLmod load C                                         # 36
+     runLmod list                                           # 37
+     runLmod load rtm_intel                                 # 38
+     runLmod load go                                        # 39
+     runLmod load bad_symlink                               # 30
+     runLmod load empty                                     # 41
+     runLmod load version_only                              # 42
+     runLmod load dflt                                      # 43
+     runLmod list                                           # 44
+     runLmod load noweb/2.10c.lua                           # 45
+     runLmod load   Try/1.0                                 # 46
+     runLmod load   Try/2.0                                 # 47
+     runLmod unload B/2.3.4                                 # 48
+     runLmod list                                           # 49
+
+
+     export LMOD_DISABLE_SAME_NAME_AUTOSWAP=yes
+     runLmod load moduleA/1.0                               # 50
+     runLmod load moduleB/1.0                               # 51
+     runLmod load moduleA/2.0 moduleA/1.0                   # 52
+     unset LMOD_DISABLE_SAME_NAME_AUTOSWAP
+     
+     runLmod purge                                          # 53
+     unsetMT
+     export MODULEPATH=$(testDir)/mf2/Core 
+     runLmod --show_hidden avail                            # 54
+     runLmod load .eb_builder/default                       # 55
+     runLmod load a/default                                 # 56
+     runLmod load b/default                                 # 57
+     runLmod list                                           # 58
+                                                               
+     runLmod purge                                          # 59
+     unsetMT
+     export MODULEPATH=$(testDir)/mf3
+     runLmod load A                                         # 60
+     runLmod load A/1.0                                     # 61
+     runLmod load B                                         # 62
+     runLmod load B/2.0                                     # 63
+     runLmod load tex                                       # 64
+     export LMOD_QUARANTINE_VARS=RTM_A:RTM_B:RTM_C             
+     export RTM_A="I like this variable the way it is"
+     export RTM_B="You can't change me"
+     export RTM_B="You are not the boss of me"
+     runLmod load rtmTest                                   # 65
+
+     export PATH=$(testDir):$PATH
+     runLmod load MakeSystemCall                            # 66
+     runLmod list                                           # 67
+     runLmod purge                                          # 68
+     
+     export MODULEPATH=$(testDir)/mf4
+     env | sort >  start.env.xyzzy
+     runLmod load   compiler/intel                          # 69
+     runLmod unload compiler/intel                          # 70
+     env | sort > end.env.xyzzy
+     diff start.env.xyzzy end.env.xyzzy | $SED   \
+          -e 's/^.*_ModuleTable.*//'             \
+          -e 's/^[0-9]\+[ac][0-9]\+.*//'         \
+          -e 's/^[0-9]\+,[0-9]\+[ac][0-9]\+.*//' \
+          -e 's/^--- *$//g'                      \
+          -e '/^ *$/d'                           \
+          -e 's/;/\\;/g'                         \
+          -e 's/$/;/g'                           \
+          > diff.env.xyzzy
+
+     runBase cat diff.env.xyzzy                             # 71
+
+
+     runLmod purge                                          # 72
+     unsetMT
+     export MODULEPATH=$(testDir)/mf5
+     runLmod load  multiline                                # 73
+     runLmod load  dofile                                   # 74
+
+     runLmod purge                                          # 75
+     unsetMT
+
+     ############################################################
+     # Testing file with a space in its name
+     ############################################################
+
+     export MODULEPATH=$(testDir)/mf6
+     runLmod load  longVersion                              # 76
+     runLmod load  setPrompt                                # 77
+     runLmod load  acme\ products                           # 78
+     
+     #------------------------------------------------------------
+     # Issue #811: protect Lmod from changes to LD_LIBRARY_PATH
+     runLmodProtectedVars load prependLibPath               # 79
+     runLmod load  pathJoin_w_spaces                        # 70
+     runLmod load  acme\ products                           # 81
+     runLmod list                                           # 82
+     runLmod avail                                          # 83
+     runLmod update                                         # 84
+                                                               
+
+     HOME=$ORIG_HOME
+     cat _stdout.[0-9][0-9][0-9] > _stdout.orig
+     joinBase64Results  -bash  _stdout.orig _stdout.new
+     cleanUp _stdout.new out.txt
+
+     cat _stderr.[0-9][0-9][0-9] > _stderr.orig
+     cleanUp _stderr.orig err.txt
+
+     rm -f results.csv
+     wrapperDiff --csv results.csv $(testDir)/out.txt out.txt
+     wrapperDiff --csv results.csv $(testDir)/err.txt err.txt
+     testFinish --onFailure $(outputDir)/test.failed -r $(resultFn) -t $(runtimeFn) results.csv
+   ]],
+
+
+   blessScript = [[
+         # perform what is needed
+   ]],
+
+   tests = {
+      { id='t1'},
+   },
+
+}
