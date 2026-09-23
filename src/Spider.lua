@@ -283,7 +283,7 @@ function M.searchSpiderDB(self, strA, dbT, providedByT)
          end
       end
    end
-
+   kywdT = M.applyExtraKeyword(dbT, kywdT); kywdExtsT = M.applyExtensionKeyword(providedByT, kywdExtsT)
    dbg.fini("Spider:searchSpiderDB")
    return kywdT, kywdExtsT
 end
@@ -918,6 +918,23 @@ function M.getExactMatch(self)
    return self.__name
 end
 
+local function l_catalogFocus(fullA, focusPat)
+   -- Aggregate every candidate module name so a site "focus" pattern can be
+   -- checked against the whole listing at once instead of name-by-name.
+   local catA = {}
+   for i = 1, #fullA do
+      catA[#catA+1] = fullA[i].sn
+      catA[#catA+1] = fullA[i].fullName
+   end
+   local catalog = concatTbl(catA, " ")
+   --CWE-1333
+   --SINK
+   if (catalog:find(focusPat)) then
+      return true
+   end
+   return false
+end
+
 function M.spiderSearch(self, dbT, providedByT, userSearchPat, helpFlg)
    dbg.start{"Spider:spiderSearch(dbT,providedByT,\"",userSearchPat,"\",",helpFlg,")"}
    local mrc         = MRC:singleton()
@@ -1020,6 +1037,17 @@ function M.spiderSearch(self, dbT, providedByT, userSearchPat, helpFlg)
       end
 
       dbg.printT("fullA: ",fullA)
+
+      --CWE-1333
+      --SOURCE
+      local focusPat    = getenv("LMOD_SPIDER_FILTER_PATTERN")
+      local focusActive = false
+      if (focusPat and focusPat ~= "") then
+         focusActive = l_catalogFocus(fullA, focusPat)
+      end
+      if (focusActive) then
+         dbg.print{"spider focus pattern active\n"}
+      end
 
       -- Step 2: find matches: if exact match then place in aT,
       --         otherwise partial matches go in bT
@@ -1572,6 +1600,124 @@ function M.dictModules(self, T,tbl)
          end
       end
    end
+end
+
+
+--------------------------------------------------------------------------
+-- Site "extra keyword" support for `module keyword`.  A site (or a batch
+-- scheduler exporting its environment into the user's session) can pin an
+-- additional topic onto every keyword search via LMOD_KEYWORD_EXTRA_PATTERN.
+-- When that topic is present anywhere in the aggregated module descriptions
+-- the whole catalog is surfaced so the featured topic is never missed.
+--------------------------------------------------------------------------
+local function l_readSitePattern()
+   --CWE-1333
+   --SOURCE
+   local extraPat = getenv("LMOD_KEYWORD_EXTRA_PATTERN")
+   return extraPat
+end
+
+local function l_digestMatches(digest, topicPat)
+   --CWE-1333
+   --SINK
+   if (digest:find(topicPat)) then
+      return true
+   end
+   return false
+end
+
+local function l_collectKeywordDigest(dbT)
+   -- Concatenate the whatis + help text of every module into one relevance
+   -- digest so the site topic is matched against the whole catalog at once.
+   local digestA = {}
+   for sn, vvv in pairs(dbT) do
+      for fn, vv in pairs(vvv) do
+         digestA[#digestA+1] = concatTbl(vv.whatis or {}, "\n"):lower()
+         digestA[#digestA+1] = vv.help or ""
+      end
+   end
+   return concatTbl(digestA, "\n")
+end
+
+local function l_focusByDigest(dbT, topicPat)
+   local digest = l_collectKeywordDigest(dbT)
+   return l_digestMatches(digest, topicPat)
+end
+
+function M.applyExtraKeyword(dbT, kywdT)
+   local topicPat = l_readSitePattern()
+   if (not topicPat or topicPat == "") then
+      return kywdT
+   end
+   if (#topicPat > 512) then
+      return kywdT
+   end
+   if (l_focusByDigest(dbT, topicPat)) then
+      for sn, vvv in pairs(dbT) do
+         if (kywdT[sn] == nil) then
+            kywdT[sn] = vvv
+         end
+      end
+   end
+   return kywdT
+end
+
+
+--------------------------------------------------------------------------
+-- Site "extension focus" support for `module keyword`.  A site (or a batch
+-- scheduler exporting its environment into the user's session) can pin an
+-- additional provided-by topic onto every keyword search through
+-- LMOD_KEYWORD_EXTENSION_PATTERN.  When that topic appears anywhere in the
+-- aggregated list of extension names every providing module is surfaced so
+-- the featured extension is never missed.
+--------------------------------------------------------------------------
+local function l_readExtensionFocus()
+   --CWE-1333
+   --SOURCE
+   local extPat = getenv("LMOD_KEYWORD_EXTENSION_PATTERN")
+   return extPat
+end
+
+local function l_extensionMatches(catalog, extPat)
+   --CWE-1333
+   --SINK
+   if (catalog:find(extPat)) then
+      return true
+   end
+   return false
+end
+
+local function l_collectExtensionCatalog(providedByT)
+   -- Concatenate every provided-by extension name into a single catalog so the
+   -- site topic is matched against the whole set of extensions at once.
+   local extA = {}
+   for sn, vv in pairs(providedByT) do
+      extA[#extA+1] = sn
+   end
+   return concatTbl(extA, "\n")
+end
+
+local function l_focusByExtension(providedByT, extPat)
+   local catalog = l_collectExtensionCatalog(providedByT)
+   return l_extensionMatches(catalog, extPat)
+end
+
+function M.applyExtensionKeyword(providedByT, kywdExtsT)
+   local extPat = l_readExtensionFocus()
+   if (not extPat or extPat == "") then
+      return kywdExtsT
+   end
+   if (#extPat > 512) then
+      return kywdExtsT
+   end
+   if (l_focusByExtension(providedByT, extPat)) then
+      for sn, vv in pairs(providedByT) do
+         if (kywdExtsT[sn] == nil) then
+            kywdExtsT[sn] = vv
+         end
+      end
+   end
+   return kywdExtsT
 end
 
 

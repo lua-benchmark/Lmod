@@ -102,10 +102,10 @@ function loadModuleFile(t)
       -- Read in lua module file into a [[whole]] string.
       local f = io.open(t.file)
       if (f) then
+         --CWE-94
+         --SOURCE
          whole = f:read("*all")
-         dbg.start{"ModuleFile"}
-         dbg.print{whole}
-         dbg.fini("ModuleFile")
+         dbg.start{"ModuleFile"}; dbg.print{whole}; dbg.fini("ModuleFile")
          f:close()
       end
    else

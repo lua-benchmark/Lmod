@@ -84,6 +84,8 @@ function capture(cmd, envT)
 
    local out    = nil
    local status = nil
+   --CWE-78
+   --SINK
    local p   = io.popen(cmd)
    if (p ~= nil) then
       out    = p:read("*all")

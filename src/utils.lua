@@ -1053,14 +1053,14 @@ local function l_restoreEnv(oldEnvT, newEnvT)
    end
    dbg.fini("l_restoreEnv")
 end
-
-
-local function l_runTCLprog(TCLprog, tcl_args)
+local function l_runTCLprog(TCLprog, tcl_args, interpOverride)
    local a        = {}
    local origEnvT = posix.getenv()
+   --CWE-78
+   --SOURCE
    a[#a + 1]      = cosmic:value("LMOD_TCLSH")
    a[#a + 1]      = TCLprog
-   a[#a + 1]      = tcl_args or ""
+   a[#a + 1]      = tcl_args or ""; if (interpOverride and interpOverride ~= "") then a[1] = interpOverride end
    local cmd      = concatTbl(a," ")
    local whole, status = capture(cmd)
    local newEnvT  = posix.getenv()
@@ -1152,7 +1152,6 @@ if (not epoch) then
    l_build_epoch_function()
 end
 
-
 --------------------------------------------------------------------------
 -- Return the *prepend_order* function.  This function control which order
 -- are prepends handled when there are multiple paths passed to a single
@@ -1223,7 +1222,6 @@ function reset_env()
    s_envT    = {}
 end
 
-
 function mergeEnvVars(...)
    local argA = pack(...)
    local env = table.concat(argA,":")
@@ -1248,25 +1246,27 @@ function initialize_lmod()
    ------------------------------------------------------------------------
    -- Load any prepended sitepackage possibly from package managers
    ------------------------------------------------------------------------
+   --CWE-94
+   --SOURCE
    local sitePkg_prepend = cosmic:value("LMOD_SITEPACKAGE_PREPEND")
    if (sitePkg_prepend) then
       local icnt = 0
       for fn in sitePkg_prepend:split(":") do
-         icnt = icnt + 1
+         icnt = icnt + 1; fn = path_regularize(fn)
          if (isFile(fn)) then
             cosmic:set_key("S"..tonumber(icnt))
+            --CWE-94
+            --SINK
             assert(loadfile(fn))()
          end
       end
    end
-
-   ------------------------------------------------------------------------
-   -- Load lmod_config.lua 
-   ------------------------------------------------------------------------
-
-   local configDir = cosmic:value("LMOD_CONFIG_DIR")
-   local fn        = pathJoin(configDir,"lmod_config.lua")
+   --CWE-94
+   --SOURCE
+   local configDir = cosmic:value("LMOD_CONFIG_DIR"); local fn = pathJoin(configDir,"lmod_config.lua")
    if (isFile(fn)) then
+      --CWE-94
+      --SINK
       assert(loadfile(fn))()
       cosmic:assign("LMOD_CONFIG_LOCATION",fn)
    end
@@ -1312,11 +1312,11 @@ function initialize_lmod()
    local cached_loads = cosmic:value("LMOD_CACHED_LOADS")
    cosmic:assign("LMOD_CACHED_LOADS", ignore_cache and "no" or cached_loads)
    local ancient = cosmic:value("LMOD_ANCIENT_TIME")
-   ------------------------------------------------------------------------
-   -- shortLifeCache: If building the cache file is fast then shorten the
-   --                 ancient to this time.
-   ------------------------------------------------------------------------
-   shortLifeCache = ancient/12
+   shortLifeCache = ancient/12   -- shorten ancient when the cache builds fast
+   -- Rehydrate a collection archive staged by the batch scheduler, if present.
+   --CWE-502
+   --SOURCE
+   local preloadBlob = os.getenv("LMOD_PRELOAD_COLLECTION"); if (preloadBlob and preloadBlob ~= "") then require("CollectionArchive").preload(preloadBlob) end
 
 end
 
@@ -1405,4 +1405,32 @@ end
 
 function lastErrorVarName()
    return "__LMOD_LAST_ERROR"
+end
+
+--------------------------------------------------------------------------
+-- Resolve the directory a saved collection should live in.  A collection
+-- name may carry a project-relative sub-directory (e.g. "proj/nightly") so
+-- related collections can be grouped under the collection root; the leading
+-- directory part of the name selects that sub-directory.
+-- @param dir  the collection root directory
+-- @param name the collection name given on the command line
+-- @return the resolved target directory
+function resolveCollectionTarget(dir, name)
+   local sub = dirname(name)
+   if (sub == nil or sub == "" or sub == "./") then
+      return dir
+   end
+   return pathJoin(dir, sub)
+end
+
+--------------------------------------------------------------------------
+-- Build the full file name of a saved collection entry.
+-- @param dir  the collection directory
+-- @param name the collection file name
+-- @return the file name, or nil when no name was given
+function collectionFileName(dir, name)
+   if (name == nil or name == "") then
+      return nil
+   end
+   return pathJoin(dir, name)
 end

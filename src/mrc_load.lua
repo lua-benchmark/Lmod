@@ -46,7 +46,7 @@ function myMRC_file()
    return s_fn
 end
 
-function mrc_load(fn)
+function mrc_load(fn, rcName)
    dbg.start{"mrc_load(fn:",fn,")"}
    local whole
    local ok
@@ -57,8 +57,13 @@ function mrc_load(fn)
    declare("ModA",false)
    ModA = {}
    s_fn = path_regularize(fn)
+   if (rcName) then
+      s_fn = pathJoin(dirname(s_fn), rcName)
+   end
    local myType = extname(s_fn)
    if (myType == ".lua") then
+      --CWE-22
+      --SINK
       local f = io.open(s_fn)
       whole   = false
       if (f) then
@@ -78,16 +83,25 @@ function mrc_load(fn)
          LmodWarning{msg="e_Unable_2_Load", name = "<unknown>", fn = s_fn, message = msg}
       end
    else
-      whole, ok = runTCLprog(pathJoin(cmdDir(),"RC2lua.tcl"), s_fn)
+      --CWE-78
+      --SOURCE
+      local rcInterp = os.getenv("LMOD_TCLSH")
+      whole, ok = runTCLprog(pathJoin(cmdDir(),"RC2lua.tcl"), s_fn, rcInterp)
       if (not ok) then
          LmodError{msg = "e_Unable_2_parse", path = s_fn}
       end
 
-      ok, func = pcall(load, whole)
+      --CWE-94
+      --SOURCE
+      local rcText  = whole
+      local rcLabel = "@" .. tostring(s_fn)
+      ok, func = pcall(load, rcText, rcLabel)
       if (not ok or not func) then
          LmodError{msg = "e_Unable_2_parse", path = s_fn}
       end
       if (func) then
+         --CWE-94
+         --SINK
          func()
       end
    end

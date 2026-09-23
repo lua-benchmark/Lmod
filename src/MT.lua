@@ -1337,6 +1337,8 @@ end
 -- @return True or false.
 function M.getMTfromFile(self,tt)
    dbg.start{"mt:getMTfromFile(",tt.fn,")"}
+   --CWE-22
+   --SINK
    local f              = io.open(tt.fn,"r")
    local msg            = tt.msg
    local collectionName = tt.name

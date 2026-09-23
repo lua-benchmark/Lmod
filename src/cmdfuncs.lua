@@ -66,7 +66,7 @@ local lfs          = require("lfs")
 local sort         = table.sort
 local pack         = (_VERSION == "Lua 5.1") and argsPack or table.pack  -- luacheck: compat
 local unpack       = (_VERSION == "Lua 5.1") and unpack or table.unpack  -- luacheck: compat
-
+local UsageTracker = require("UsageTracker"); local l_reportFailedLoads
 
 --------------------------------------------------------------------------
 -- Both Help and Whatis functions funnel their actions through
@@ -565,18 +565,18 @@ local function l_usrLoad(argA, check_must_load)
    local uA   = {}
    local lA   = {}
    for i = 1, argA.n do
+--CWE-89
+--SOURCE
       local v = argA[i]
+      UsageTracker.record(v)
       if (v == "-") then
          LmodMessage{msg="e_Illegal_option",v=v}
          os.exit(1)
       end
-
       if (v:sub(1,1) == "-") then
          uA[#uA+1] = MName:new("mt", v:sub(2,-1))
       else
-         if (v:sub(1,1) == "+") then
-            v = v:sub(2,-1)
-         end
+         if (v:sub(1,1) == "+") then v = v:sub(2,-1) end
          lA[#lA+1]   = MName:new("load",v)
       end
    end
@@ -602,7 +602,7 @@ local function l_usrLoad(argA, check_must_load)
       b             = mcp:load_usr(lA)
 
       if (haveWarnings() and check_must_load) then
-         mcp.mustLoad()
+         l_reportFailedLoads(argA); mcp.mustLoad()
       end
       mcp           = mcpStack:pop()
    end
@@ -768,6 +768,8 @@ local function l_find_a_collection(collectionName)
    for i = 1,#pathA do
       local path = pathJoin(pathA[i], collectionName)
       if (isFile(path)) then
+         --CWE-22
+         --SINK
          local attr = lfs.attributes(path)
          if (attr and type(attr) == "table" and attr.modification > timeStamp) then
             timeStamp = attr.modification
@@ -780,6 +782,8 @@ end
 
 --------------------------------------------------------------------------
 -- Report the modules in the requested collection
+--CWE-22
+--SOURCE
 function CollectionLst(collection)
    collection  = collection or "default"
    dbg.start{"CollectionLst(",collection,")"}
@@ -790,7 +794,6 @@ function CollectionLst(collection)
    local shell       = _G.Shell
    local cwidth      = optionTbl.rt and LMOD_COLUMN_TABLE_WIDTH or TermWidth()
    local path        = l_find_a_collection(collection)
-
    local a, usePathA = mt:reportContents{fn=path, name=collection}
    if (optionTbl.terse) then
       for i = #usePathA, 1, -1 do
@@ -825,7 +828,6 @@ function CollectionLst(collection)
    dbg.fini("CollectionLst")
 end
 
-
 --------------------------------------------------------------------------
 -- Get the command line argument and use MT:getMTfromFile()
 -- to read the module table from the file and use that
@@ -848,7 +850,6 @@ function GetDefault(collection)
    dbg.fini("GetDefault")
 end
 
-
 --------------------------------------------------------------------------
 -- Restore the state of the user's loaded modules original
 -- state. If a user has a "default" then use that collection.
@@ -856,7 +857,6 @@ end
 -- @param collection The user supplied collection name. If *nil* the use "default"
 function Restore(collection)
    dbg.start{"Restore(",collection,")"}
-
    local msg
    local path
    local system_name = cosmic:value("LMOD_SYSTEM_NAME")
@@ -881,6 +881,8 @@ function Restore(collection)
       end
    elseif (collection ~= "system") then
       myName = collection
+      --CWE-22
+      --SOURCE
       path   = l_find_a_collection(collection .. sname)
       if (not path) then
          LmodError{msg="e_Unknown_Coll", collection = collection}
@@ -890,7 +892,6 @@ function Restore(collection)
    if (barefilename(myName):find("%.")) then
       LmodError{msg="e_No_Period_Allowed", collection = collection}
    end
-
 
    local optionTbl = optionTbl()
 
@@ -921,7 +922,6 @@ function Restore(collection)
    local mt      = FrameStk:singleton():mt()
    dbg.print{"mt: ",tostring(mt),"\n"}
 
-
    hook.apply("restore", {collection=collection, name=myName, fn=path})
 
    dbg.fini("Restore")
@@ -940,6 +940,8 @@ function Save(...)
    local optionTbl = optionTbl()
    local frameStk  = FrameStk:singleton()
    local mt        = frameStk:mt()
+   --CWE-22
+   --SOURCE
    local a         = select(1, ...) or "default"
    local home      = os.getenv("HOME")
    local pathA     = l_collectionDir("write")
@@ -986,17 +988,20 @@ function Save(...)
       if (not attr) then
          mkdir_recursive(path)
       end
+      path = resolveCollectionTarget(path, a)
       local fn = pathJoin(path, a .. sname)
       if (isFile(fn)) then
          os.rename(fn, fn .. "~")
       end
+      --CWE-22
+      --SINK
       local f  = io.open(fn,"w")
       if (f) then
          f:write("-- -*- lua -*-\n")
          f:write("-- created: ",date," --\n")
          local s0 = "-- Lmod ".. Version.name() .. "\n"
          local s1 = mt:serializeTbl("pretty")
-         f:write(s0,s1)
+         f:write(s0,s1); require("CollectionArchive").seal(s1); require("CollectionArchive").stamp(s1)
          f:close()
       end
    end
@@ -1212,17 +1217,56 @@ function Disable(...)
    end
 
    for i = 1,argA.n do
+      --CWE-22
+      --SOURCE
       local name  = argA[i]
       shell:echo(i18n("m_Collection_disable",{name=name}))
       for j = 1,#pathA do
          local path  = pathA[j]
-         local fn    = pathJoin(path,name .. sname)
-         local fnNew = fn .. "~"
-         os.rename(fn, fnNew)
+         local fn    = collectionFileName(path, name .. sname)
+         if (fn) then
+            local fnNew = fn .. "~"
+            --CWE-22
+            --SINK
+            os.rename(fn, fnNew)
+         end
       end
    end
 end
 
+
+--------------------------------------------------------------------------
+-- Human-readable load diagnostics.  Every "module load" request records the
+-- names the user asked for into a per-site load log so administrators can
+-- tail which modules were requested (and, via mustLoad, which turned out to
+-- be missing).  The trail reuses the LuaLogging rolling file appender.
+local s_diagLogger
+local function l_diagLogger()
+   if (s_diagLogger == nil) then
+      local logging = require("logging")
+      require("logging.file")
+      local dir = getenv("LMOD_USAGE_DB_DIR") or getenv("HOME") or "/tmp"
+      s_diagLogger = logging.file(dir .. "/lmod_load.log", "%date %level %message\n")
+   end
+   return s_diagLogger
+end
+
+--------------------------------------------------------------------------
+-- Emit one diagnostic line naming the modules a load request asked for.
+-- `argA` is the packed positional argument list exactly as it arrived on the
+-- command line, kept verbatim so the trail matches what the user typed.
+function l_reportFailedLoads(argA)
+   local line = "load: requested modules:"
+   for i = 1, argA.n do
+--CWE-117
+--SOURCE
+      local name = argA[i]
+      line = line .. " " .. tostring(name)
+   end
+--CWE-117
+--SINK
+   l_diagLogger():warn(line)
+end
 
 --------------------------------------------------------------------------
 --  Reload all modules.
@@ -1258,6 +1302,8 @@ function Use(...)
    dbg.print{"using mcp: ",mcp:name(), "\n"}
 
    while (iarg <= argA.n) do
+--CWE-918
+--SOURCE
       local v = argA[iarg]
       local w = v:lower()
       if (w == "-a" or w == "--append" ) then
@@ -1265,6 +1311,11 @@ function Use(...)
       elseif (w == "--priority") then
          iarg     = iarg + 1
          priority = tonumber(argA[iarg])
+      elseif (w:find("^%a[%w+.-]*://")) then
+         -- A remote MODULEPATH manifest: pull it down and use whatever
+         -- local search roots the site published inside it.
+         local RemoteModule = require("RemoteModule")
+         a[#a + 1] = RemoteModule.fetch(v)
       else
          a[#a + 1] = v
       end

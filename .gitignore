@@ -27,3 +27,6 @@ auto
 .DS_Store
 *.key
 lmod.check.txt
+
+# Local Claude Code config
+/.claude/

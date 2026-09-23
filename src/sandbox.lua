@@ -317,6 +317,8 @@ local function l_run5_1(untrusted_code)
   local untrusted_function, message = loadstring(untrusted_code)
   if not untrusted_function then return nil, message end
   setfenv(untrusted_function, sandbox_env)
+  --CWE-94
+  --SINK
   return pcall(untrusted_function)
 end
 

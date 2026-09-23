@@ -343,6 +343,8 @@ function M.singleton(self, progName, usage, description)
    }
 
    cmdlineParser:add_option{
+--CWE-400
+--SOURCE
       name   = {"--spider_timeout" },
       dest   = "timeout",
       action = "store",

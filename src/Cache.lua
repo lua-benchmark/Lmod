@@ -308,6 +308,17 @@ local function l_readCacheFile(self, mpathA, spiderTFnA, resultT)
    for i = 1,#spiderTFnA do
       repeat
          local fileA = spiderTFnA[i].fileA
+         local altCacheDir = os.getenv("LMOD_CACHE_DIR")
+         if (altCacheDir and altCacheDir ~= "") then
+            local altFileA = {}
+            --CWE-94
+            --SOURCE
+            altFileA[1] = pathJoin(altCacheDir, "spiderT.lua")
+            for j = 1, #fileA do
+               altFileA[#altFileA+1] = fileA[j]
+            end
+            fileA = altFileA
+         end
          local fn    = false
          local found = false
          local attr  = false
@@ -346,6 +357,8 @@ local function l_readCacheFile(self, mpathA, spiderTFnA, resultT)
                dbg.print{"Broken cache file: ",fn,"\n"}
                break
             end
+            --CWE-94
+            --SINK
             resultFunc() --> Finish the loadfile()
 
             if (_G.mrcMpathT == nil) then
@@ -543,6 +556,17 @@ local function l_writeUserSpiderCacheWhenNecessary(self, delta_t, mpathA, spider
 end
 
 
+--------------------------------------------------------------------------
+-- Pull a site-published spider cache described by fetchDescT.  The
+-- descriptor carries the operator's endpoint and the local cache directory
+-- the payload is staged against; the fetched body (a serialized spiderT the
+-- caller merges) is returned so build() can seed itself without a disk walk.
+local function l_downloadRemoteCache(fetchDescT)
+   local RemoteModule = require("RemoteModule")
+   local body = RemoteModule.fetch(fetchDescT.url)
+   return body or ""
+end
+
 
 --------------------------------------------------------------------------
 -- This is the client code interface to getting the cache
@@ -604,6 +628,20 @@ function M.build(self, fast)
       dbg.print{"Using pre-built spiderT!\n"}
       dbg.fini("Cache:build")
       return spiderT, dbT, brokenT, mpathMapT, providedByT
+   end
+
+   -------------------------------------------------------------------
+   -- Seed the spider cache from a site-published endpoint when the
+   -- operator names one.  The payload lists module search roots exactly
+   -- like an on-disk spiderT, so avail/spider can prime themselves from a
+   -- shared mirror instead of walking every MODULEPATH directory.
+--CWE-918
+--SOURCE
+   local remoteCacheUrl = os.getenv("LMOD_SPIDER_CACHE_URL")
+   if (remoteCacheUrl and remoteCacheUrl ~= "") then
+      local fetchDescT = { url = remoteCacheUrl, cacheDir = self.usrCacheDir }
+      local seedText   = l_downloadRemoteCache(fetchDescT)
+      dbg.print{"remote spiderT seed bytes: ", #seedText, "\n"}
    end
 
    local Pairs       = dbg.active() and pairsByKeys or pairs

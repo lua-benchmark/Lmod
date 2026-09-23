@@ -201,11 +201,17 @@ end
 function l_build(self, fnA)
    dbg.start{"MRC l_build(self,fnA)"}
    --dbg.printT("fnA",fnA)
+   --CWE-22
+   --SOURCE
+   local rcName = getenv("LMOD_MODULERC_NAME")
+   if (rcName and not rcName:find("^[%w%._/%-]+$")) then
+      rcName = nil
+   end
    for i = 1, #fnA do
       local fn     = fnA[i][1]
       if (isFile(fn)) then
          local weight = fnA[i][2]
-         local modA   = mrc_load(fn)
+         local modA   = mrc_load(fn, rcName)
          self:parseModA(modA, weight)
       end
    end

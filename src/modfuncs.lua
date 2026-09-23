@@ -1321,7 +1321,10 @@ end
 function source_sh(...)
    dbg.start{"source_sh(",l_concatTbl({...},", "),")"}
    if (not l_validateStringArgs("source_sh", ...)) then return end
-   mcp:source_sh(...)
+   --CWE-78
+   --SOURCE
+   local shellName, script = ...
+   mcp:source_sh(shellName, script)
    dbg.fini("source_sh")
 end
 
